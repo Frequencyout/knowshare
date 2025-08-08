@@ -1,0 +1,9 @@
+knowshare-frontend/node_modules/
+
+knowshare-backend/vendor/
+
+knowshare-backend/node_modules/
+
+knowshare-backend/storage/
+
+knowshare-backend/.env
