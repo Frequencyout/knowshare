@@ -1,0 +1,282 @@
+KnowShare — Updated POC (MVP) Specification
+This POC updates the previous scope to include question voting, tag-based filtering, Tailwind UI, refined APIs, and concrete data/flow details so development can proceed without ambiguity.
+
+1) Goals and Scope
+Lightweight Q&A with markdown, voting (answers + questions), best answer, tags, search, badges, notifications, reporting, admin moderation.
+
+Frontend: React with Tailwind UI utilities and URL-synced filters for tags and sorting.
+
+Backend: Laravel API with Sanctum; polymorphic votes using a production-grade package for speed and correctness.
+
+2) Tech Stack
+Frontend: React (Vite/CRA), Tailwind CSS, Axios/React Query.
+
+Backend: Laravel, Sanctum, overtrue/laravel-vote for votes, MySQL (PlanetScale-compatible), Pusher (optional), Mail provider.
+
+Hosting: Vercel/Netlify (FE), Render (BE), PlanetScale (DB).
+
+3) Domain Model and Database
+Tables and important columns:
+
+users: id, name, email(unique), password_hash, avatar_url, bio, reputation(int default 0), is_admin(bool), created_at.
+
+tags: id, name, slug(unique), description; index slug(unique) for filters.
+
+questions:
+
+id, user_id(FK), title, body_markdown, body_html, slug(unique), score(int default 0, indexed), views(int), accepted_answer_id(nullable), is_closed(bool), created_at, updated_at.
+
+Indexes: (user_id), (slug unique), (score), (created_at).
+
+question_tags (pivot): question_id, tag_id; composite unique(question_id, tag_id); composite index(question_id, tag_id).
+
+answers: id, question_id(FK), user_id(FK), body_markdown, body_html, score(int default 0), is_accepted(bool), created_at, updated_at; indexes: (question_id), (score), (created_at).
+
+votes (provided by package or custom):
+
+If using overtrue/laravel-vote: package migrations create votes table with polymorphic votable_type, votable_id, user_id, value(+/-1), timestamps, and unique(user_id, votable_type, votable_id).
+
+notifications: id, user_id, type, data(JSON), read_at, created_at.
+
+reports: id, reporter_id, target_type, target_id, reason, status(enum), created_at, updated_at.
+
+badges, user_badges: minimal MVP for simple achievements.
+
+Notes:
+
+Keep questions.score and answers.score as cached integers updated on each vote for fast sorting.
+
+Ensure tags.slug unique and pivot indexes for performant filters.
+
+4) Voting System
+Package: overtrue/laravel-vote for robust up/down/cancel semantics and helpers.
+
+Traits:
+
+User: use Overtrue\LaravelVote\Traits\Voter.
+
+Question, Answer: use Overtrue\LaravelVote\Traits\Votable.
+
+API:
+
+POST /api/questions/{id}/vote { action: "up"|"down"|"remove" }.
+
+POST /api/answers/{id}/vote { action: "up"|"down"|"remove" }.
+
+Rules:
+
+Auth required; block self-vote; one vote per user per target (package enforces uniqueness).
+
+Update cached score on each change (recompute sum(value) or incremental update; start with recompute for correctness).
+
+Response fields:
+
+{ score: number, my_vote: -1|0|1 } for immediate UI reconciliation.
+
+Optional:
+
+Reputation updates and notifications on vote events using package events (Voted, VoteCancelled).
+
+5) Question Listing, Sorting, Tag Filtering
+Endpoint:
+
+GET /api/questions?search=...&tag=react,laravel&sort=top|new|unanswered&page=1.
+
+Semantics:
+
+tag=react,laravel filters by any of the listed tag slugs via whereHas + whereIn(slug).
+
+sort:
+
+top: orderBy(score desc).
+
+new: orderBy(created_at desc).
+
+unanswered: whereNull(accepted_answer_id) AND answers_count=0; then orderBy(created_at desc).
+
+Eager-load:
+
+with(['tags'])->withCount('answers') for list payloads.
+
+Search:
+
+Start with DB fulltext or LIKE on title/body_html; combine with tag filters and sort.
+
+Indexes:
+
+questions.score, tags.slug unique, question_tags(question_id, tag_id).
+
+6) Notifications (MVP)
+Write rows for:
+
+New answer on my question.
+
+My answer accepted as best.
+
+Optional: my question/answer received an upvote.
+
+Client: polling GET /api/notifications?unread=1 every 30–60s initially; Pusher optional for realtime.
+
+7) Security and Rate Limits
+Sanctum SPA auth; HTTPS.
+
+Rate limits:
+
+Auth routes: 5/min/ip.
+
+Posting (ask/answer/vote/report): 30/min/user.
+
+Search/list: 60/min/ip.
+
+Sanitize markdown on server; limit content sizes; block duplicate rapid answers; soft-delete for moderation.
+
+8) Frontend UI with Tailwind
+Install and configure Tailwind for React:
+
+npm install -D tailwindcss postcss autoprefixer; npx tailwindcss init -p.
+
+tailwind.config.js content: ["./index.html","./src/**/*.{js,ts,jsx,tsx}"].
+
+index.css: @tailwind base; @tailwind components; @tailwind utilities; confirm working via a test button.
+
+Core components:
+
+TagChip: selectable pill; active/inactive styles; clearable.
+
+SortToggle: segmented control for New/Top/Unanswered.
+
+VoteButton: up/down with score, disabled on own content; optimistic behavior (toggle up/remove; down/remove transitions).
+
+QuestionCard: title, excerpt, tags, score, answers_count.
+
+Data flow:
+
+GET /api/tags to populate filter chips.
+
+Sync URL query (?tag=a,b&sort=top) with UI state so it’s shareable.
+
+GET /api/questions with applied filters/sort; render cards.
+
+POST vote endpoints with optimistic UI; reconcile with server {score,my_vote}.
+
+Tailwind references:
+
+Official framework guides for React/Vite/CRA integration.
+
+Quick usage patterns for utilities and composition.
+
+9) API Map (MVP)
+Auth
+
+POST /api/register {name,email,password}
+
+POST /api/login {email,password}
+
+POST /api/logout
+
+GET /api/me
+
+Questions
+
+GET /api/questions?search=&tag=&sort=&page=
+
+POST /api/questions {title, body_markdown, tags: [slugs], image_url?}
+
+GET /api/questions/{id-or-slug}
+
+PATCH /api/questions/{id}
+
+DELETE /api/questions/{id}
+
+PATCH /api/questions/{id}/best {answer_id}
+
+POST /api/questions/{id}/vote {action} → {score,my_vote}
+
+Answers
+
+POST /api/questions/{id}/answers {body_markdown}
+
+PATCH /api/answers/{id}
+
+DELETE /api/answers/{id}
+
+POST /api/answers/{id}/vote {action} → {score,my_vote}
+
+Tags
+
+GET /api/tags?search=
+
+Notifications
+
+GET /api/notifications?unread=1
+
+POST /api/notifications/{id}/read
+
+POST /api/notifications/read-all
+
+Reports
+
+POST /api/reports {target_type, target_id, reason}
+
+Admin: GET /api/admin/reports?status=; PATCH /api/admin/reports/{id}; DELETE /api/admin/content/{target_type}/{id}
+
+10) Learning Notes (for maintainers)
+Voting:
+
+Voter/Votable traits; methods: upvote, downvote, cancelVote, hasUpvoted/hasDownvoted; events for hooks.
+
+Tag filtering:
+
+whereHas('tags', fn => whereIn('slug', $tags)); consider exact-match “ALL tags” with grouping if needed later.
+
+Tailwind:
+
+Install/config; content paths; using utility classes in React; no CSS conflicts expected; can gradually migrate CSS.
+
+11) Testing Strategy
+Voting:
+
+Up/down/remove sequences; unique per user; self-vote blocked; score and my_vote correct; package enforces constraints.
+
+Tag filters:
+
+Single/multiple tag slugs; combined with sort=top; pagination stable.
+
+Unanswered:
+
+accepted_answer_id null and answers_count=0 behavior.
+
+Snapshot important list payloads to catch regressions.
+
+12) Delivery Plan (Short)
+Backend:
+
+Install laravel-vote; add traits; add score column; implement vote endpoints; update questions index for tag filters and sort; add indexes.
+
+Frontend:
+
+Install Tailwind; implement TagChip/SortToggle/VoteButton/QuestionCard; wire filters and voting; sync URL query; optimistic updates.
+
+Docs/QA:
+
+README entries for endpoints and UI usage; manual pass on vote flows and tag filters.
+
+13) Example Payloads
+Upvote question:
+
+POST /api/questions/123/vote { "action": "up" } → { "score": 8, "my_vote": 1 }.
+
+Remove vote:
+
+POST /api/questions/123/vote { "action": "remove" } → { "score": 7, "my_vote": 0 }.
+
+Tag-filtered list:
+
+GET /api/questions?tag=react,laravel&sort=top → paginated list with tags, score, answers_count.
+
+14) References
+overtrue/laravel-vote: installation, traits, API, events for voting.
+
+Tailwind CSS install guides for React/CRA/Vite/React Router.
+
+Eloquent whereHas examples for tag filters and variants
