@@ -85,7 +85,10 @@ export default function QuestionCard({ question, onVote, onDelete, showExcerpt =
           {/* Excerpt */}
           {showExcerpt && excerpt && (
             <div className="text-gray-600 text-sm mb-3 line-clamp-3">
-              <MarkdownContent className="prose-sm">
+              <MarkdownContent 
+                className="prose-sm"
+                bodyHtml={question.body_html ? question.body_html.substring(0, 200) + '...' : null}
+              >
                 {excerpt}
               </MarkdownContent>
             </div>

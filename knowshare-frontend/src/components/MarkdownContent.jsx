@@ -1,7 +1,28 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 
-const MarkdownContent = ({ children, className = '' }) => {
+const MarkdownContent = ({ children, bodyHtml, className = '' }) => {
+  // If we have pre-processed HTML from the server, use it for better performance
+  if (bodyHtml) {
+    return (
+      <div 
+        className={`prose prose-gray max-w-none ${className}`}
+        dangerouslySetInnerHTML={{ __html: bodyHtml }}
+        style={{
+          // Add custom CSS for server-rendered HTML
+          '--prose-headings': '#111827',
+          '--prose-body': '#374151',
+          '--prose-bold': '#111827',
+          '--prose-links': '#2563eb',
+          '--prose-code': '#111827',
+          '--prose-pre-code': '#374151',
+          '--prose-pre-bg': '#f3f4f6',
+        }}
+      />
+    );
+  }
+
+  // Fallback to client-side markdown rendering
   return (
     <div className={`prose prose-gray max-w-none ${className}`}>
       <ReactMarkdown

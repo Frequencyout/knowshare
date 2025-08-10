@@ -18,6 +18,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
         ]);
 
+        // Configure rate limiting for API endpoints
+        $middleware->api([
+            \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
+        ]);
+
         //
     })
     ->withExceptions(function (Exceptions $exceptions): void {

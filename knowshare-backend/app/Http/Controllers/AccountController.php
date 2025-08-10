@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\BadgeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -10,7 +11,21 @@ class AccountController extends Controller
 {
     public function me(Request $request)
     {
-        return $request->user()->only(['id','name','email','avatar_url','bio','reputation']);
+        $user = $request->user();
+
+        // Get user statistics for badge progress
+        $questionsCount = $user->questions()->count();
+        $answersCount = $user->answers()->count();
+        $acceptedAnswersCount = $user->answers()->where('is_accepted', true)->count();
+
+        return array_merge(
+            $user->only(['id','name','email','avatar_url','bio','reputation']),
+            [
+                'questions_count' => $questionsCount,
+                'answers_count' => $answersCount,
+                'accepted_answers_count' => $acceptedAnswersCount,
+            ]
+        );
     }
 
     public function updateMe(Request $request)
@@ -65,6 +80,11 @@ class AccountController extends Controller
         $user->save();
 
         return [ 'avatar_url' => $user->avatar_url ];
+    }
+
+    public function myBadges(Request $request, BadgeService $badgeService)
+    {
+        return $badgeService->getUserBadges($request->user());
     }
 }
 

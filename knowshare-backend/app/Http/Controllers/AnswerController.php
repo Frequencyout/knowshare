@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Answer;
 use App\Models\Question;
+use App\Notifications\NewAnswerNotification;
+use App\Services\MarkdownService;
+use App\Services\BadgeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 // remove duplicate function imports if any were added elsewhere
@@ -12,7 +15,7 @@ use function abort;
 
 class AnswerController extends Controller
 {
-    public function store($questionId, \Illuminate\Http\Request $request)
+    public function store($questionId, \Illuminate\Http\Request $request, MarkdownService $markdownService, BadgeService $badgeService)
     {
         $question = Question::findOrFail($questionId);
         $validated = $request->validate([
@@ -23,15 +26,23 @@ class AnswerController extends Controller
             'question_id' => $question->id,
             'user_id' => $request->user()->id,
             'body_markdown' => $validated['body_markdown'],
-            'body_html' => null,
+            'body_html' => $markdownService->toSafeHtml($validated['body_markdown']),
             'score' => 0,
             'is_accepted' => false,
         ]);
 
+        // Send notification to question owner (but not if they answered their own question)
+        if ($question->user_id !== $request->user()->id) {
+            $question->user->notify(new NewAnswerNotification($answer, $question, $request->user()));
+        }
+
+        // Check for new badges
+        $badgeService->checkAndAwardBadges($request->user());
+
         return response()->json($answer, 201);
     }
 
-    public function update(\Illuminate\Http\Request $request, Answer $answer)
+    public function update(\Illuminate\Http\Request $request, Answer $answer, MarkdownService $markdownService)
     {
         if ((int) $request->user()->id !== (int) $answer->user_id) {
             abort(403);
@@ -39,6 +50,9 @@ class AnswerController extends Controller
         $validated = $request->validate([
             'body_markdown' => ['required', 'string'],
         ]);
+
+        $validated['body_html'] = $markdownService->toSafeHtml($validated['body_markdown']);
+
         $answer->update($validated);
         return response()->json($answer);
     }
@@ -75,7 +89,7 @@ class AnswerController extends Controller
         $score = (int) DB::table('votes')
             ->where('votable_type', Answer::class)
             ->where('votable_id', $answer->id)
-            ->sum('value');
+            ->sum('votes');
 
         $answer->score = $score;
         $answer->save();

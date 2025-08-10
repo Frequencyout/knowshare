@@ -10,6 +10,7 @@ import Layout from './components/Layout'
 import RequireAuth from './components/RequireAuth'
 import AskQuestionPage from './pages/AskQuestionPage'
 import QuestionDetailPage from './pages/QuestionDetailPage'
+import BadgesPage from './pages/BadgesPage'
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/question/:idOrSlug" element={<QuestionDetailPage />} />
           <Route path="/tags" element={<TagsPage />} />
           <Route path="/tags/:slug" element={<TagDetailPage />} />
+          <Route path="/badges" element={<BadgesPage />} />
           <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
         </Route>

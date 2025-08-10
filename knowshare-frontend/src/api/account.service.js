@@ -20,4 +20,9 @@ export const myAnswers = async (params = {}) => {
   return data
 }
 
+export const myBadges = async () => {
+  const { data } = await api.get('/me/badges')
+  return data
+}
+
 

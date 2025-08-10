@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             TagSeeder::class,
+            BadgeSeeder::class,
         ]);
 
         $tags = collect([

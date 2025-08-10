@@ -1,9 +1,12 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import ProfileMenu from './ProfileMenu'
+import NotificationDropdown from './NotificationDropdown'
+import BadgeNotification from './BadgeNotification'
 
 const nav = [
   { to: '/', label: 'Home' },
   { to: '/tags', label: 'Tags' },
+  { to: '/badges', label: 'Badges' },
   { to: '/ask', label: 'Ask' },
   { to: '/dashboard', label: 'Dashboard' },
 ]
@@ -12,6 +15,7 @@ export default function Layout() {
   const { pathname } = useLocation()
   return (
     <div className="min-h-screen bg-gray-50">
+      <BadgeNotification />
       <div className="max-w-6xl mx-auto grid grid-cols-12 gap-4">
         <aside className="col-span-3 md:col-span-2 p-4">
           <div className="text-xl font-bold mb-4">KnowShare</div>
@@ -25,7 +29,10 @@ export default function Layout() {
           <Outlet />
         </main>
         <aside className="col-span-3 md:col-span-3 p-4">
-          <div className="flex justify-end"><ProfileMenu /></div>
+          <div className="flex justify-end items-center space-x-3">
+            <NotificationDropdown />
+            <ProfileMenu />
+          </div>
           <div className="mt-4 text-sm text-gray-500">Search, trends, and suggested tags can go here.</div>
         </aside>
       </div>

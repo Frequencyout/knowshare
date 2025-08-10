@@ -1,23 +1,28 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getMe, myQuestions, myAnswers } from '../api/account.service'
+import { getUserBadges } from '../api/badges.service'
+import BadgeDisplay from '../components/BadgeDisplay'
 
 export default function DashboardPage() {
   const [me, setMe] = useState(null)
   const [qs, setQs] = useState([])
   const [as, setAs] = useState([])
+  const [badges, setBadges] = useState([])
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [meData, questionsData, answersData] = await Promise.all([
+        const [meData, questionsData, answersData, badgesData] = await Promise.all([
           getMe(),
           myQuestions(),
-          myAnswers()
+          myAnswers(),
+          getUserBadges()
         ]);
         setMe(meData);
         setQs(questionsData.data || questionsData);
         setAs(answersData.data || answersData);
+        setBadges(badgesData);
       } catch (error) {
         console.error('Failed to load dashboard data:', error);
       }
@@ -34,6 +39,10 @@ export default function DashboardPage() {
         <div>
           <div className="text-xl font-semibold">{me.name}</div>
           <div className="text-sm text-gray-600">Reputation: {me.reputation ?? 0}</div>
+          <div className="text-sm text-gray-600">Badges: {badges.length} earned</div>
+          <div className="mt-2">
+            <BadgeDisplay size="sm" />
+          </div>
         </div>
       </div>
 

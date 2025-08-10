@@ -5,6 +5,7 @@ import { getMe } from '../api/account.service'
 import VoteButton from '../components/VoteButton'
 import TagChip from '../components/TagChip'
 import MarkdownContent from '../components/MarkdownContent'
+import ReportModal from '../components/ReportModal'
 import api from '../api/axios'
 
 export default function QuestionDetailPage() {
@@ -14,6 +15,7 @@ export default function QuestionDetailPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [currentUser, setCurrentUser] = useState(null)
+  const [reportModal, setReportModal] = useState({ open: false, type: null, id: null, title: null })
 
   useEffect(() => {
     showQuestion(idOrSlug).then(setQ)
@@ -27,6 +29,14 @@ export default function QuestionDetailPage() {
     } catch (error) {
       setCurrentUser(null)
     }
+  }
+
+  const handleReport = (type, id, title) => {
+    setReportModal({ open: true, type, id, title })
+  }
+
+  const closeReportModal = () => {
+    setReportModal({ open: false, type: null, id: null, title: null })
   }
 
   const submitAnswer = async () => {
@@ -104,7 +114,7 @@ export default function QuestionDetailPage() {
             <h1 className="text-2xl font-bold text-gray-900 mb-4">{q.title}</h1>
             
             <div className="prose max-w-none mb-4">
-              <MarkdownContent>{q.body_markdown}</MarkdownContent>
+              <MarkdownContent bodyHtml={q.body_html}>{q.body_markdown}</MarkdownContent>
             </div>
 
             {/* Tags */}
@@ -129,6 +139,15 @@ export default function QuestionDetailPage() {
                 <span>Asked by <strong>{q.user?.name || 'Anonymous'}</strong></span>
                 <span>{new Date(q.created_at).toLocaleDateString()}</span>
                 <span>{q.views || 0} views</span>
+                {currentUser && (
+                  <button
+                    onClick={() => handleReport('question', q.id, q.title)}
+                    className="text-gray-400 hover:text-red-600 text-xs"
+                    title="Report this question"
+                  >
+                    Report
+                  </button>
+                )}
               </div>
               {q.is_closed && (
                 <span className="bg-red-100 text-red-800 px-2 py-1 rounded text-xs">
@@ -179,7 +198,7 @@ export default function QuestionDetailPage() {
                     )}
 
                     <div className="prose max-w-none mb-4">
-                      <MarkdownContent>{answer.body_markdown}</MarkdownContent>
+                      <MarkdownContent bodyHtml={answer.body_html}>{answer.body_markdown}</MarkdownContent>
                     </div>
 
                     {/* Answer Actions */}
@@ -195,6 +214,17 @@ export default function QuestionDetailPage() {
                             className="text-blue-600 hover:text-blue-800 hover:underline"
                           >
                             Mark as best answer
+                          </button>
+                        )}
+                        
+                        {/* Report Answer */}
+                        {currentUser && (
+                          <button
+                            onClick={() => handleReport('answer', answer.id, `Answer to "${q.title}"`)}
+                            className="text-gray-400 hover:text-red-600 text-xs"
+                            title="Report this answer"
+                          >
+                            Report
                           </button>
                         )}
                       </div>
@@ -253,6 +283,15 @@ export default function QuestionDetailPage() {
           </Link>
         </div>
       )}
+
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={reportModal.open}
+        onClose={closeReportModal}
+        reportableType={reportModal.type}
+        reportableId={reportModal.id}
+        title={reportModal.title}
+      />
     </div>
   )
 }
