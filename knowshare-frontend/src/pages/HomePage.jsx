@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MagnifyingGlassIcon, PlusIcon } from '@heroicons/react/24/outline';
 import QuestionCard from '../components/QuestionCard';
 import TagChip from '../components/TagChip';
@@ -10,11 +11,8 @@ import { getMe } from '../api/account.service';
 
 export default function HomePage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [questions, setQuestions] = useState([]);
-  const [popularTags, setPopularTags] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
-  const [currentUser, setCurrentUser] = useState(null);
+  const queryClient = useQueryClient();
   
   // URL-synced state
   const search = searchParams.get('search') || '';
@@ -22,24 +20,80 @@ export default function HomePage() {
   const selectedTags = tagParam ? tagParam.split(',') : [];
   const sort = searchParams.get('sort') || 'new';
 
-  useEffect(() => {
-    loadQuestions();
-  }, [search, tagParam, sort]); // Use tagParam instead of selectedTags array
+  // Query for questions list with caching and background refetch
+  const { 
+    data: questionsData, 
+    isLoading: questionsLoading, 
+    error: questionsError 
+  } = useQuery({
+    queryKey: ['questions', { search, tag: tagParam, sort }],
+    queryFn: () => {
+      const params = {};
+      if (search) params.search = search;
+      if (tagParam) params.tag = tagParam;
+      if (sort !== 'new') params.sort = sort;
+      return listQuestions(params);
+    },
+    keepPreviousData: true, // Don't show loading when filters change
+    staleTime: 30_000, // Consider fresh for 30 seconds
+  });
 
-  useEffect(() => {
-    loadPopularTags();
-    loadCurrentUser();
-  }, []);
+  // Query for popular tags - rarely changes, cache for longer
+  const { data: popularTags = [] } = useQuery({
+    queryKey: ['tags', 'popular'],
+    queryFn: () => getPopularTags().then(data => data.slice(0, 10)),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
 
-  const loadCurrentUser = async () => {
-    try {
-      const user = await getMe();
-      setCurrentUser(user);
-    } catch (error) {
-      // User not logged in, that's fine
-      setCurrentUser(null);
-    }
-  };
+  // Query for current user
+  const { data: currentUser } = useQuery({
+    queryKey: ['user', 'me'],
+    queryFn: getMe,
+    retry: false, // Don't retry if not logged in
+    staleTime: 2 * 60 * 1000, // Cache user data for 2 minutes
+  });
+
+  // Optimistic voting mutation
+  const voteMutation = useMutation({
+    mutationFn: ({ questionId, action }) => voteQuestion(questionId, action),
+    onMutate: async ({ questionId, action }) => {
+      // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
+      await queryClient.cancelQueries(['questions']);
+      
+      // Snapshot the previous value
+      const previousQuestions = queryClient.getQueryData(['questions', { search, tag: tagParam, sort }]);
+      
+      // Optimistically update the cache
+      queryClient.setQueryData(['questions', { search, tag: tagParam, sort }], old => {
+        if (!old?.data) return old;
+        
+        return {
+          ...old,
+          data: old.data.map(q => 
+            q.id === questionId
+              ? { 
+                  ...q, 
+                  score: q.score + (action === 'up' ? 1 : action === 'down' ? -1 : 0),
+                  my_vote: action === 'up' ? 1 : action === 'down' ? -1 : 0
+                }
+              : q
+          )
+        };
+      });
+      
+      return { previousQuestions };
+    },
+    onError: (err, variables, context) => {
+      // If mutation fails, rollback to previous state
+      if (context?.previousQuestions) {
+        queryClient.setQueryData(['questions', { search, tag: tagParam, sort }], context.previousQuestions);
+      }
+    },
+    onSettled: () => {
+      // Always refetch after error or success to ensure consistency
+      queryClient.invalidateQueries(['questions']);
+    },
+  });
 
   // Initialize search input from URL
   useEffect(() => {
@@ -55,32 +109,6 @@ export default function HomePage() {
       return () => clearTimeout(timer);
     }
   }, [searchInput, search]);
-
-  const loadQuestions = async () => {
-    try {
-      setLoading(true);
-      const params = {};
-      if (search) params.search = search;
-      if (selectedTags.length > 0) params.tag = selectedTags.join(',');
-      if (sort !== 'new') params.sort = sort;
-      
-      const data = await listQuestions(params);
-      setQuestions(data.data || []);
-    } catch (error) {
-      console.error('Failed to load questions:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadPopularTags = async () => {
-    try {
-      const data = await getPopularTags();
-      setPopularTags(data.slice(0, 10) || []); // Show top 10
-    } catch (error) {
-      console.error('Failed to load popular tags:', error);
-    }
-  };
 
   const updateSearch = (value) => {
     const newParams = new URLSearchParams(searchParams);
@@ -125,23 +153,13 @@ export default function HomePage() {
     setSearchParams({});
   };
 
-  const handleVote = async (questionId, action) => {
-    try {
-      const result = await voteQuestion(questionId, action);
-      // Update the question in the list with new score and vote
-      setQuestions(prev => prev.map(q => 
-        q.id === questionId 
-          ? { ...q, score: result.score, my_vote: result.my_vote }
-          : q
-      ));
-    } catch (error) {
-      console.error('Vote failed:', error);
-    }
-  };
+  const handleVote = useCallback(async (questionId, action) => {
+    voteMutation.mutate({ questionId, action });
+  }, [voteMutation]);
 
   const handleDelete = (questionId) => {
-    // Remove the question from the list
-    setQuestions(prev => prev.filter(q => q.id !== questionId));
+    // Invalidate questions cache to refetch fresh data
+    queryClient.invalidateQueries(['questions']);
   };
 
   return (
@@ -226,12 +244,16 @@ export default function HomePage() {
       )}
 
       {/* Questions */}
-      {loading ? (
+      {questionsLoading && !questionsData ? (
         <div className="text-center py-8">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
           <p className="mt-2 text-gray-600">Loading questions...</p>
         </div>
-      ) : questions.length === 0 ? (
+      ) : questionsError ? (
+        <div className="text-center py-8 text-red-600">
+          <p>Failed to load questions. Please try again.</p>
+        </div>
+      ) : !questionsData?.data?.length ? (
         <div className="text-center py-12">
           <p className="text-gray-600 mb-4">
             {search || selectedTags.length > 0 
@@ -249,7 +271,7 @@ export default function HomePage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {questions.map(question => (
+          {questionsData.data.map(question => (
             <QuestionCard 
               key={question.id} 
               question={question} 

@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import React, { useState } from 'react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { showQuestion, voteQuestion } from '../api/questions.service'
 import { getMe } from '../api/account.service'
 import VoteButton from '../components/VoteButton'
@@ -10,26 +11,106 @@ import api from '../api/axios'
 
 export default function QuestionDetailPage() {
   const { idOrSlug } = useParams()
-  const [q, setQ] = useState(null)
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  
+  // Local form state
   const [answer, setAnswer] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [currentUser, setCurrentUser] = useState(null)
   const [reportModal, setReportModal] = useState({ open: false, type: null, id: null, title: null })
 
-  useEffect(() => {
-    showQuestion(idOrSlug).then(setQ)
-    loadCurrentUser()
-  }, [idOrSlug])
+  // Query for the specific question - this is the key cache entry!
+  const { 
+    data: q, 
+    isLoading: questionLoading, 
+    error: questionError 
+  } = useQuery({
+    queryKey: ['question', idOrSlug],
+    queryFn: () => showQuestion(idOrSlug),
+    staleTime: 2 * 60 * 1000, // Question details can be cached for 2 minutes
+  })
 
-  const loadCurrentUser = async () => {
-    try {
-      const user = await getMe()
-      setCurrentUser(user)
-    } catch (error) {
-      setCurrentUser(null)
+  // Reuse the same user query from HomePage - automatic caching!
+  const { data: currentUser } = useQuery({
+    queryKey: ['user', 'me'],
+    queryFn: getMe,
+    retry: false,
+    staleTime: 2 * 60 * 1000,
+  })
+
+  // Mutation for submitting new answers
+  const submitAnswerMutation = useMutation({
+    mutationFn: (answerData) => api.post(`/questions/${q.id}/answers`, answerData),
+    onSuccess: () => {
+      // Invalidate and refetch the question to get the new answer
+      queryClient.invalidateQueries(['question', idOrSlug])
+      setAnswer('') // Clear the form
     }
-  }
+  })
+
+  // Optimistic question voting
+  const questionVoteMutation = useMutation({
+    mutationFn: ({ action }) => voteQuestion(q.id, action),
+    onMutate: async ({ action }) => {
+      await queryClient.cancelQueries(['question', idOrSlug])
+      
+      const previousQuestion = queryClient.getQueryData(['question', idOrSlug])
+      
+      queryClient.setQueryData(['question', idOrSlug], old => {
+        if (!old) return old
+        return {
+          ...old,
+          score: old.score + (action === 'up' ? 1 : action === 'down' ? -1 : 0),
+          my_vote: action === 'up' ? 1 : action === 'down' ? -1 : 0
+        }
+      })
+      
+      return { previousQuestion }
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousQuestion) {
+        queryClient.setQueryData(['question', idOrSlug], context.previousQuestion)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries(['question', idOrSlug])
+    }
+  })
+
+  // Optimistic answer voting
+  const answerVoteMutation = useMutation({
+    mutationFn: ({ answerId, action }) => api.post(`/answers/${answerId}/vote`, { action }),
+    onMutate: async ({ answerId, action }) => {
+      await queryClient.cancelQueries(['question', idOrSlug])
+      
+      const previousQuestion = queryClient.getQueryData(['question', idOrSlug])
+      
+      queryClient.setQueryData(['question', idOrSlug], old => {
+        if (!old) return old
+        return {
+          ...old,
+          answers: old.answers.map(a => 
+            a.id === answerId
+              ? { 
+                  ...a, 
+                  score: a.score + (action === 'up' ? 1 : action === 'down' ? -1 : 0),
+                  my_vote: action === 'up' ? 1 : action === 'down' ? -1 : 0
+                }
+              : a
+          )
+        }
+      })
+      
+      return { previousQuestion }
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousQuestion) {
+        queryClient.setQueryData(['question', idOrSlug], context.previousQuestion)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries(['question', idOrSlug])
+    }
+  })
 
   const handleReport = (type, id, title) => {
     setReportModal({ open: true, type, id, title })
@@ -40,55 +121,52 @@ export default function QuestionDetailPage() {
   }
 
   const submitAnswer = async () => {
-    setSaving(true); setError('')
-    try {
-      await api.post(`/questions/${q.id}/answers`, { body_markdown: answer })
-      const fresh = await showQuestion(q.id)
-      setQ(fresh)
-      setAnswer('')
-    } catch (e) { setError(e?.response?.data?.message || 'Failed') }
-    finally { setSaving(false) }
+    if (!answer.trim() || !q) return
+    
+    submitAnswerMutation.mutate(
+      { body_markdown: answer },
+      {
+        onError: (error) => {
+          console.error('Failed to submit answer:', error)
+        }
+      }
+    )
   }
 
   const setBest = async (aid) => {
     try {
       await api.patch(`/questions/${q.id}/best`, { answer_id: aid })
-      const fresh = await showQuestion(q.id)
-      setQ(fresh)
+      // Invalidate to refetch with updated best answer
+      queryClient.invalidateQueries(['question', idOrSlug])
     } catch (error) {
       console.error('Failed to set best answer:', error)
     }
   }
 
   const handleQuestionVote = async (action) => {
-    try {
-      const result = await voteQuestion(q.id, action)
-      setQ(prev => ({ ...prev, score: result.score, my_vote: result.my_vote }))
-    } catch (error) {
-      console.error('Vote failed:', error)
-    }
+    questionVoteMutation.mutate({ action })
   }
 
   const handleAnswerVote = async (answerId, action) => {
-    try {
-      const result = await api.post(`/answers/${answerId}/vote`, { action })
-      setQ(prev => ({
-        ...prev,
-        answers: prev.answers.map(a => 
-          a.id === answerId 
-            ? { ...a, score: result.data.score, my_vote: result.data.my_vote }
-            : a
-        )
-      }))
-    } catch (error) {
-      console.error('Answer vote failed:', error)
-    }
+    answerVoteMutation.mutate({ answerId, action })
   }
 
-  if (!q) return (
+  if (questionLoading) return (
     <div className="text-center py-8">
       <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       <p className="mt-2 text-gray-600">Loading question...</p>
+    </div>
+  )
+
+  if (questionError) return (
+    <div className="text-center py-8">
+      <p className="text-red-600">Failed to load question. Please try again.</p>
+    </div>
+  )
+
+  if (!q) return (
+    <div className="text-center py-8">
+      <p className="text-gray-600">Question not found.</p>
     </div>
   )
 
@@ -119,41 +197,24 @@ export default function QuestionDetailPage() {
 
             {/* Tags */}
             {q.tags && q.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="flex flex-wrap gap-2 mb-3">
                 {q.tags.map(tag => (
                   <TagChip
                     key={tag.slug}
                     tag={tag}
                     isSelected={false}
-                    onClick={() => {
-                      window.location.href = `/?tag=${tag.slug}`;
-                    }}
+                    onClick={() => navigate(`/?tag=${tag.slug}`)}
                   />
                 ))}
               </div>
             )}
 
-            {/* Question Meta */}
-            <div className="flex items-center justify-between text-sm text-gray-500 pt-4 border-t">
-              <div className="flex items-center space-x-4">
-                <span>Asked by <strong>{q.user?.name || 'Anonymous'}</strong></span>
-                <span>{new Date(q.created_at).toLocaleDateString()}</span>
-                <span>{q.views || 0} views</span>
-                {currentUser && (
-                  <button
-                    onClick={() => handleReport('question', q.id, q.title)}
-                    className="text-gray-400 hover:text-red-600 text-xs"
-                    title="Report this question"
-                  >
-                    Report
-                  </button>
-                )}
-              </div>
-              {q.is_closed && (
-                <span className="bg-red-100 text-red-800 px-2 py-1 rounded text-xs">
-                  Closed
-                </span>
-              )}
+            {/* Author */}
+            <div className="text-sm text-gray-600">
+              Asked by{' '}
+              {q.user ? (
+                <span className="font-medium">{q.user.name}</span>
+              ) : 'Anonymous'}
             </div>
           </div>
         </div>
@@ -246,9 +307,11 @@ export default function QuestionDetailPage() {
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Answer</h3>
           
-          {error && (
+          {submitAnswerMutation.isError && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-              <p className="text-red-600 text-sm">{error}</p>
+              <p className="text-red-600 text-sm">
+                {submitAnswerMutation.error?.response?.data?.message || 'Failed to submit answer'}
+              </p>
             </div>
           )}
 
@@ -264,10 +327,10 @@ export default function QuestionDetailPage() {
               <p className="text-sm text-gray-500">Supports Markdown formatting</p>
               <button
                 onClick={submitAnswer}
-                disabled={saving || !answer.trim()}
+                disabled={submitAnswerMutation.isLoading || !answer.trim()}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {saving ? 'Posting...' : 'Post Answer'}
+                {submitAnswerMutation.isLoading ? 'Posting...' : 'Post Answer'}
               </button>
             </div>
           </div>
