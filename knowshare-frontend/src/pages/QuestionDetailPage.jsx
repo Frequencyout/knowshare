@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { showQuestion, voteQuestion } from '../api/questions.service'
 import { getMe } from '../api/account.service'
 import VoteButton from '../components/VoteButton'
@@ -10,6 +10,7 @@ import api from '../api/axios'
 
 export default function QuestionDetailPage() {
   const { idOrSlug } = useParams()
+  const navigate = useNavigate()
   const [q, setQ] = useState(null)
   const [answer, setAnswer] = useState('')
   const [saving, setSaving] = useState(false)
@@ -119,41 +120,24 @@ export default function QuestionDetailPage() {
 
             {/* Tags */}
             {q.tags && q.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="flex flex-wrap gap-2 mb-3">
                 {q.tags.map(tag => (
                   <TagChip
                     key={tag.slug}
                     tag={tag}
                     isSelected={false}
-                    onClick={() => {
-                      window.location.href = `/?tag=${tag.slug}`;
-                    }}
+                    onClick={() => navigate(`/?tag=${tag.slug}`)}
                   />
                 ))}
               </div>
             )}
 
-            {/* Question Meta */}
-            <div className="flex items-center justify-between text-sm text-gray-500 pt-4 border-t">
-              <div className="flex items-center space-x-4">
-                <span>Asked by <strong>{q.user?.name || 'Anonymous'}</strong></span>
-                <span>{new Date(q.created_at).toLocaleDateString()}</span>
-                <span>{q.views || 0} views</span>
-                {currentUser && (
-                  <button
-                    onClick={() => handleReport('question', q.id, q.title)}
-                    className="text-gray-400 hover:text-red-600 text-xs"
-                    title="Report this question"
-                  >
-                    Report
-                  </button>
-                )}
-              </div>
-              {q.is_closed && (
-                <span className="bg-red-100 text-red-800 px-2 py-1 rounded text-xs">
-                  Closed
-                </span>
-              )}
+            {/* Author */}
+            <div className="text-sm text-gray-600">
+              Asked by{' '}
+              {q.user ? (
+                <span className="font-medium">{q.user.name}</span>
+              ) : 'Anonymous'}
             </div>
           </div>
         </div>

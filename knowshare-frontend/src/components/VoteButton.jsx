@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 
-export default function VoteButton({ score, myVote, onVote, size = 'md', disabled = false }) {
+function VoteButton({ score, myVote, onVote, size = 'md', disabled = false }) {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleVote = async (action) => {
@@ -80,5 +80,7 @@ export default function VoteButton({ score, myVote, onVote, size = 'md', disable
     </div>
   );
 }
+
+export default memo(VoteButton);
 
 
