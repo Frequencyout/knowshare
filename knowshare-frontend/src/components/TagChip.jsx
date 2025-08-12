@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
-export default function TagChip({ tag, isSelected, onClick, variant = 'default' }) {
+function TagChip({ tag, isSelected, onClick, variant = 'default' }) {
   const baseClasses = 'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium transition-colors cursor-pointer';
   
   const variantClasses = {
@@ -26,5 +27,7 @@ export default function TagChip({ tag, isSelected, onClick, variant = 'default' 
     </button>
   );
 }
+
+export default memo(TagChip);
 
 

@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BellIcon } from '@heroicons/react/24/outline';
 import { BellIcon as BellSolidIcon } from '@heroicons/react/24/solid';
 import { getNotifications, markNotificationRead, markAllNotificationsRead, getUnreadCount } from '../api/notifications.service';
+import { useNavigate } from 'react-router-dom';
 
 const NotificationDropdown = () => {
+    const navigate = useNavigate();
     const [isOpen, setIsOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
@@ -101,10 +103,10 @@ const NotificationDropdown = () => {
         if (!notification.read_at) {
             handleMarkAsRead(notification.id);
         }
-        
-        // Navigate to the related question
+        // Navigate to the related question via SPA routing
         const questionSlug = notification.data.question_slug || notification.data.question_id;
-        window.location.href = `/question/${questionSlug}`;
+        navigate(`/question/${questionSlug}`);
+        setIsOpen(false);
     };
 
     return (

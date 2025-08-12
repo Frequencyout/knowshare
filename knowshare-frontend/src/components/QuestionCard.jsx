@@ -1,21 +1,22 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, memo, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { ChatBubbleLeftIcon, UserIcon, TrashIcon } from '@heroicons/react/24/outline';
 import VoteButton from './VoteButton';
 import TagChip from './TagChip';
 import MarkdownContent from './MarkdownContent';
 import { deleteQuestion } from '../api/questions.service';
 
-export default function QuestionCard({ question, onVote, onDelete, showExcerpt = true, currentUser = null }) {
+function QuestionCard({ question, onVote, onDelete, showExcerpt = true, currentUser = null }) {
+  const navigate = useNavigate();
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleVote = async (action) => {
+  const handleVote = useCallback(async (action) => {
     if (onVote) {
       await onVote(question.id, action);
     }
-  };
+  }, [onVote, question.id]);
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!confirm('Are you sure you want to delete this question? This action cannot be undone.')) {
       return;
     }
@@ -32,7 +33,7 @@ export default function QuestionCard({ question, onVote, onDelete, showExcerpt =
     } finally {
       setIsDeleting(false);
     }
-  };
+  }, [onDelete, question.id]);
 
   // Create excerpt from markdown (simple approach - first 200 chars)
   const excerpt = question.body_markdown 
@@ -102,10 +103,7 @@ export default function QuestionCard({ question, onVote, onDelete, showExcerpt =
                   key={tag.slug}
                   tag={tag}
                   isSelected={false}
-                  onClick={() => {
-                    // Navigate to tag filter
-                    window.location.href = `/?tag=${tag.slug}`;
-                  }}
+                  onClick={() => navigate(`/?tag=${tag.slug}`)}
                 />
               ))}
             </div>
@@ -146,5 +144,7 @@ export default function QuestionCard({ question, onVote, onDelete, showExcerpt =
     </div>
   );
 }
+
+export default memo(QuestionCard);
 
 
