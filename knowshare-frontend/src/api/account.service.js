@@ -1,4 +1,5 @@
 import api from './axios'
+//manages user account data and personal content
 
 export const getMe = async () => {
   const { data } = await api.get('/me')

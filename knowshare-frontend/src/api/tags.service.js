@@ -1,5 +1,5 @@
 import api from './axios'
-
+//manages tag-related API endpoints
 export const listTags = async (search = '') => {
   const params = {}
   if (search) params.search = search

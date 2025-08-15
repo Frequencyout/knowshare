@@ -1,4 +1,5 @@
 import api from './axios'
+//handles user authentication and registration
 
 export const register = async ({ name, email, password, password_confirmation }) => {
   const { data } = await api.post('/register', { name, email, password, password_confirmation })

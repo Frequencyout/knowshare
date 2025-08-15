@@ -1,5 +1,5 @@
 import api from './axios'
-
+//manages badge-related API endpoints
 export const getAllBadges = async () => {
   const { data } = await api.get('/badges')
   return data

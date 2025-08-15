@@ -1,5 +1,5 @@
 import api from './axios'
-
+//manages question-related API endpoints
 export const listQuestions = async (params = {}) => {
   const { data } = await api.get('/questions', { params })
   return data

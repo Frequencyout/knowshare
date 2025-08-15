@@ -1,5 +1,5 @@
 import api from './axios';
-
+//manages notification-related API endpoints
 export const getNotifications = (unread = false) => {
     const params = unread ? { unread: true } : {};
     return api.get('/notifications', { params });

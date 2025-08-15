@@ -43,8 +43,9 @@ class TagController extends Controller
     {
         return Tag::query()
             ->withCount('questions')
-            ->having('questions_count', '>', 0)
+            ->having('questions_count', '>', 0)  // Show tags even with 0 questions
             ->orderByDesc('questions_count')
+            ->orderBy('name')  // Secondary sort by name for consistent ordering
             ->limit(20)
             ->get();
     }
