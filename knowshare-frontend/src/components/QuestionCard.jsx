@@ -6,6 +6,38 @@ import TagChip from './TagChip';
 import MarkdownContent from './MarkdownContent';
 import { deleteQuestion } from '../api/questions.service';
 
+// Format date for question cards - shows relative time for recent, absolute for older
+const formatQuestionDate = (dateString) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
+  const diffInDays = Math.floor(diffInHours / 24);
+  
+  // Less than 1 hour ago
+  if (diffInHours < 1) {
+    const diffInMinutes = Math.floor((now - date) / (1000 * 60));
+    if (diffInMinutes < 1) return 'just now';
+    return `${diffInMinutes}m ago`;
+  }
+  
+  // Less than 24 hours ago
+  if (diffInHours < 24) {
+    return `${diffInHours}h ago`;
+  }
+  
+  // Less than 7 days ago
+  if (diffInDays < 7) {
+    return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
+  }
+  
+  // Older than 7 days - show actual date
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+  });
+};
+
 function QuestionCard({ question, onVote, onDelete, showExcerpt = true, currentUser = null }) {
   const navigate = useNavigate();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -122,7 +154,7 @@ function QuestionCard({ question, onVote, onDelete, showExcerpt = true, currentU
               </span>
             </div>
             <time dateTime={question.created_at}>
-              {new Date(question.created_at).toLocaleDateString()}
+              {formatQuestionDate(question.created_at)}
             </time>
           </div>
         </div>
